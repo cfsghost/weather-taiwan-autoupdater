@@ -3,8 +3,6 @@ var mongodb = require('mongodb');
 var config = require('./configs/config.json');
 var Queue = require('./queue');
 
-var queue = new Queue();
-
 var MongoClient = mongodb.MongoClient;
 
 module.exports = function() {
@@ -18,6 +16,7 @@ module.exports = function() {
 			throw err;
 		}
 
+		var queue = new Queue();
 		var endOfLine = false;
 		var tasks = 0;
 
