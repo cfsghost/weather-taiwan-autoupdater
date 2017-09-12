@@ -1,7 +1,0 @@
-
-	"accessKey": "YOURKEY",
-	"database": {
-		"uri": "mongodb://USERNAME:PASSWORD@HOSTNAME:PORT/DATABASE?ssl=true",
-		"collection": "weather"
-	}
-}
