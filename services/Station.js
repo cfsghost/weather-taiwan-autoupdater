@@ -1,6 +1,6 @@
 const config = require('config');
 const moment = require('moment');
-const debug = require('debug')('service:Rainfall');
+const debug = require('debug')('service:Station');
 
 const { Service } = require('engined');
 
@@ -9,52 +9,21 @@ const fieldTable = [
 	'lng',
 	'locationName',
 	'stationId',
-	'obsTime',
 	'ELEV',
-	'RAIN',
-	'MIN_10',
-	'HOUR_3',
-	'HOUR_6',
-	'HOUR_12',
-	'HOUR_24',
-	'NOW',
 	'CITY',
-	'ATTRIBUTE'
+	'address',
 ];
-
-const fieldDefault = {
-	'ELEV': -99999,
-	'RAIN': 0,
-	'MIN_10': 0,
-	'HOUR_3': 0,
-	'HOUR_6': 0,
-	'HOUR_12': 0,
-	'HOUR_24': 0,
-	'NOW': 0,
-	'ATTRIBUTE': ''
-};
 
 module.exports = class extends Service {
 
 	constructor(context) {
 		super(context);
-
-		this.job = null;
 	}
 
 	async start() {
 
-		this.getContext().set('Rainfall', {
+		this.getContext().set('Station', {
 			pack: (data) => {
-
-				// Apply default value
-				let record = Object.assign({}, fieldDefault, data);
-
-				if (record.obsTime) {
-
-					// Convert string to Date object
-					record.obsTime = moment.utc(record.obsTime).format('YYYY-MM-DD HH:mm:ss');
-				}
 
 				// Getting field what we need
 				return fieldTable.map((fieldName) => {
@@ -63,21 +32,25 @@ module.exports = class extends Service {
 			},
 			update: async (records) => {
 
+				debug('Saving ...');
+
 				// Save to database
 				const dbAgent = this.getContext().get('MySQL').getAgent('default');
 
 				let qstr = [
-					'INSERT INTO `WeatherRainfallData` (',
+					'INSERT INTO `WeatherStations` (',
 					fieldTable.map(fieldName => '`' + fieldName + '`').join(','),
 					') VALUES ?'
 				].join(' ');
 
 				let [ ret ] = await dbAgent.query(qstr, [ records ]);
+
+				debug('DONE')
 			}
 		});
 	}
 
 	async stop() {
-		this.getContext().remove('Rainfall');
+		this.getContext().remove('Station');
 	}
 }

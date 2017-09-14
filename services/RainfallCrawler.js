@@ -3,6 +3,7 @@ const BatchStream = require('batch-stream');
 const schedule = require('node-schedule');
 const rainfall = require('weather-taiwan').Rainfall;
 const config = require('config');
+const moment = require('moment');
 const debug = require('debug')('service:RainfallCrawler');
 
 const { Service } = require('engined');
@@ -11,70 +12,84 @@ module.exports = class extends Service {
 
 	constructor(context) {
 		super(context);
-
-		this.job = null;
 	}
 
 	async start() {
 
-		// Initializing scheduler
-		let rule = new schedule.RecurrenceRule();
-		rule.minute = 30;
+		this.getContext().set('RainfallCrawler', {
 
-		this.job = schedule.scheduleJob(rule, () => {
+			fetch: () => {
 
-			// Getting rainfall agent
-			const rainfallAgent = this.getContext().get('Rainfall');
+				return new Promise((resolve, reject) => {
 
-			debug('Connecting to server to fetch new weather information at ' + moment().format('YYYY-MM-DD HH:mm:ss'));
+					// Getting rainfall agent
+					const rainfallAgent = this.getContext().get('Rainfall');
 
-			// Preparing to fetch rainfall information from server
-			let fetcher = rainfall.fetch(config.get('rainfallUpdater.key'));
-			let parser = rainfall.parse();
+					debug('Connecting to server to fetch new weather information at ' + moment().format('YYYY-MM-DD HH:mm:ss'));
 
-			// Update database with 50 records at once
-			let batch = new BatchStream({ size: 50 });
+					// Preparing to fetch rainfall information from server
+					let fetcher = rainfall.fetch(config.get('rainfallUpdater.key'));
+					let parser = rainfall.parse();
 
-			fetcher
-				.pipe(parser)
-				.pipe(new Transform({
-					objectMode: true,
-					transform(data, encoding, callback) {
+					// Update database with 50 records at once
+					let batch = new BatchStream({ size: 50 });
 
-						data.lng = data.lon;
-						delete data.lon;
+					// Stream for updating database
+					let updateDatabase = new Writable({
+						objectMode: true,
+						write(data, encoding, callback) {
 
-						callback(null, rainfallAgent.pack(data));
-					}
-				}))
-				.pipe(batch)
-				.pipe(new Writable({
-					objectMode: true,
-					write(data, encoding, callback) {
+							(async () => {
 
-						(async () => {
+								try {
+									debug('Updating ' + data.length + ' records...');
 
-							try {
-								debug('Updating ' + data.length + ' records...');
+									await rainfallAgent.update(data);
+								} catch(e) {
 
-								await rainfallAgent.update(data);
-							} catch(e) {
-								debug(e);
-								return callback(e);
+									// Record exists already
+									if (e.code === 'ER_DUP_ENTRY') {
+										return callback();
+									}
+
+									debug(e);
+									return callback(e);
+								}
+
+								callback();
+							})()
+						}
+					});
+
+					updateDatabase.on('finish', () => {
+						resolve();
+					});
+
+					updateDatabase.on('error', (err) => {
+						reject(err);
+					});
+
+					fetcher
+						.pipe(parser)
+						.pipe(new Transform({
+							objectMode: true,
+							transform(data, encoding, callback) {
+
+								data.lng = data.lon;
+								delete data.lon;
+
+								callback(null, rainfallAgent.pack(data));
 							}
-
-							callback();
-						})()
-					}
-				}))
+						}))
+						.pipe(batch)
+						.pipe(updateDatabase);
+				});
+			}
 		});
 	}
 
 	async stop() {
 
-		if (this.job = null)
-			return;
-
-		this.job.cancel();
+		this.getContext().remove('RainfallCrawler');
 	}
 }

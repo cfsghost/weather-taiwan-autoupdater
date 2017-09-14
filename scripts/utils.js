@@ -22,7 +22,11 @@ const initializeServices = async () => {
 		// We only pick up services what we need
 		let selected = [
 			'MySQL',
-			'Rainfall'
+			'Database',
+			'Rainfall',
+			'Station',
+			'StationCrawler',
+			'RainfallCrawler',
 		];
 
 		let selectedServices = selected.reduce((result, serviceName) => {
@@ -235,6 +239,59 @@ state.on('import_year', async () => {
 	process.exit();
 });
 
+state.on('import_station', async () => {
+
+	let serviceManager = await initializeServices();
+
+	// Getting station agents
+	const stationAgent = serviceManager.getContext().get('Station');
+	const stationCrawler = serviceManager.getContext().get('StationCrawler');
+
+	try {
+
+
+		console.log('Connecting to server to fetch data ...');
+
+		// Getting web page which contains station list
+		let page = await stationCrawler.getDataFromServer();
+
+		console.log('Parsing data ...');
+
+		// Parsing
+		let records = stationCrawler.parseData(page);
+
+		console.log('Saving ...');
+
+		// Save to database
+		await stationAgent.update(records);
+
+	} catch(e) {
+		console.log(e);
+	}
+
+	process.exit();
+});
+
+state.on('fetch_now', async () => {
+
+	let serviceManager = await initializeServices();
+
+	// Getting station agents
+	const rainfallCrawler = serviceManager.getContext().get('RainfallCrawler');
+
+	try {
+
+		console.log('Connecting to server to fetch data ...');
+
+		await rainfallCrawler.fetch();
+
+	} catch(e) {
+		console.log(e);
+	}
+
+	process.exit();
+});
+
 commander.version('0.0.1');
 
 commander
@@ -249,6 +306,20 @@ commander
 	.description('import for this year')
 	.action(() => {
 		state.emit('import_year');
+	});
+
+commander
+	.command('import_station')
+	.description('import station information')
+	.action(() => {
+		state.emit('import_station');
+	});
+
+commander
+	.command('fetch_now')
+	.description('fetch weather information now')
+	.action(() => {
+		state.emit('fetch_now');
 	});
 
 commander.parse(process.argv);
