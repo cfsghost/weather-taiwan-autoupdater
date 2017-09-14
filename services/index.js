@@ -1,4 +1,6 @@
 module.exports = {
 	MySQL: require('./MySQL'),
-	RainfallUpdater: require('./RainfallUpdater')
+	Rainfall: require('./Rainfall'),
+	StationCrawler: require('./StationCrawler'),
+	RainfallCrawler: require('./RainfallCrawler')
 };

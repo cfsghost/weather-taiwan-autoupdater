@@ -3,31 +3,9 @@ const BatchStream = require('batch-stream');
 const schedule = require('node-schedule');
 const rainfall = require('weather-taiwan').Rainfall;
 const config = require('config');
-const moment = require('moment');
-const debug = require('debug')('service:RainfallUpdater');
+const debug = require('debug')('service:RainfallCrawler');
 
 const { Service } = require('engined');
-
-const fieldTable = {
-	'lat': 'lat',
-	'lon': 'lng',
-	'locationName': 'locationName',
-	'stationId': 'stationId',
-	'obsTime': 'obsTime',
-	'ELEV': 'ELEV',
-	'RAIN': 'RAIN',
-	'MIN_10': 'MIN_10',
-	'HOUR_3': 'HOUR_3',
-	'HOUR_6': 'HOUR_6',
-	'HOUR_12': 'HOUR_12',
-	'HOUR_24': 'HOUR_24',
-	'NOW': 'NOW',
-	'CITY': 'CITY',
-	'CITY_SN': 'CITY_SN',
-	'TOWN': 'TOWN',
-	'TOWN_SN': 'TOWN_SN',
-	'ATTRIBUTE': 'ATTRIBUTE'
-};
 
 module.exports = class extends Service {
 
@@ -39,12 +17,14 @@ module.exports = class extends Service {
 
 	async start() {
 
+		// Initializing scheduler
 		let rule = new schedule.RecurrenceRule();
 		rule.minute = 30;
 
 		this.job = schedule.scheduleJob(rule, () => {
 
-			let self = this;
+			// Getting rainfall agent
+			const rainfallAgent = this.getContext().get('Rainfall');
 
 			debug('Connecting to server to fetch new weather information at ' + moment().format('YYYY-MM-DD HH:mm:ss'));
 
@@ -61,15 +41,10 @@ module.exports = class extends Service {
 					objectMode: true,
 					transform(data, encoding, callback) {
 
-						// Convert string to Date object
-						data.obsTime = moment.utc(data.obsTime).format('YYYY-MM-DD HH:mm:ss');
+						data.lng = data.lon;
+						delete data.lon;
 
-						// Getting field what we need
-						let record = Object.keys(fieldTable).map((fieldName) => {
-							return data[fieldName];
-						});
-
-						callback(null, record);
+						callback(null, rainfallAgent.pack(data));
 					}
 				}))
 				.pipe(batch)
@@ -79,19 +54,10 @@ module.exports = class extends Service {
 
 						(async () => {
 
-							// Save to database
-							const dbAgent = self.getContext().get('MySQL').getAgent('default');
-
 							try {
 								debug('Updating ' + data.length + ' records...');
 
-								let qstr = [
-									'INSERT INTO `WeatherRainfallData` (',
-									Object.values(fieldTable).map(fieldName => '`' + fieldName + '`').join(','),
-									') VALUES ?'
-								].join(' ');
-
-								let [ ret ] = await dbAgent.query(qstr, [ data ]);
+								await rainfallAgent.update(data);
 							} catch(e) {
 								debug(e);
 								return callback(e);
