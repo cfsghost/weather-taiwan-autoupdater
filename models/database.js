@@ -62,6 +62,12 @@ module.exports = {
 					'stationId',
 					'obsTime'
 				]
+			},
+			time: {
+				type: 'index',
+				columns: [
+					'obsTime'
+				]
 			}
 		}
 	}
